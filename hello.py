@@ -4,6 +4,7 @@ import binascii
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import PKCS1_OAEP
 import socket
+import json
 
 class EncryptionService:
     def __init__(self):
@@ -74,7 +75,7 @@ class EmailMessage:
             self.encrypted = False
 
 
-class SocketClient:
+class JsonSocketClient:
     def __init__(self, server_ip, server_port):
         self.server_ip = server_ip
         self.server_port = server_port
@@ -93,8 +94,8 @@ class SocketClient:
             self.client_socket.connect((self.server_ip, self.server_port))
             print(f"Connected to {self.server_ip} on port {self.server_port}.")
         except socket.error as e:
-            print(f"Failed to connect to {self.server_ip} on port {self.server_port}: {e}")
-            self.create_socket()  # Recreate socket if connect fails
+            print(f"Failed to connect: {e}")
+            self.create_socket()  # Recreate the socket if connect fails
 
     def send_message(self, message):
         """Send a message to the server."""
@@ -111,12 +112,22 @@ class SocketClient:
         except Exception as e:
             print(f"Failed to receive message: {e}")
             return None
+    def send_json(self, data):
+        """Send JSON data to the server."""
+        try:
+            # Serialize the data to a JSON formatted str and encode to bytes
+            json_data = json.dumps(data).encode('utf-8')
+            self.client_socket.sendall(json_data)
+            print("JSON data sent successfully.")
+        except Exception as e:
+            print(f"Failed to send JSON data: {e}")
 
     def close(self):
         """Close the socket connection."""
         if self.client_socket:
             self.client_socket.close()
             print("Connection closed.")
+
 
 
 class ApplicationGUI:
@@ -174,10 +185,17 @@ class ApplicationGUI:
 if __name__ == "__main__":
     server_ip = "192.168.149.57"  # Địa chỉ IP của server
     server_port = 25  # Cổng mà server đang lắng nghe
-    client = SocketClient(server_ip, server_port)
+    client = JsonSocketClient(server_ip, server_port)
+    # Example JSON data
+    json_data = {
+        "name": "John Doe",
+        "email": "john@example.com",
+        "age": 30
+    }
 
     client.connect()
     client.send_message("Hello, server!")
+    client.send_json(json_data)
     response = client.receive_message()
     Connect = client.connect()
     if response:
