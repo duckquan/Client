@@ -81,13 +81,13 @@ class SMTPClient:
 
     def connect(self):
         """Connect to the SMTP server and optionally start TLS."""
-        self.connection = smtplib.SMTP(self.server_address, self.port)
+        self.connection = smtplib.SMTP("192.168.117.57", 25)
         self.connection.ehlo()  # Can be called for all SMTP servers.
         if self.use_tls:
             self.connection.starttls()
             self.connection.ehlo()  # Say hello again after starting TLS
         if self.username and self.password:
-            self.connection.login("minhdq@unomail.id.vn", "Minhdo962004")
+            self.connection.login(self.username, self.password)
 
     def send_email(self, sender, recipients, subject, body):
         """Send an email through the connected SMTP server."""
@@ -149,7 +149,7 @@ def main():
     print("Retrieved Email Content:", retrieved_email_content)
 
     #Connect to Server
-    smtp_client = SMTPClient("192.168.117.57", 25, use_tls=False, timeout=120)
+    smtp_client = SMTPClient("127.0.0.1", 25, 120, username="minhdq@unomail.id.vn",password="Minhdo962004", use_tls=False)
     try:
         smtp_client.connect()
         smtp_client.send_email("minhdq@unomail.id.vn", ["hahahaha@unomail.id.vn"], "Test Subject",
