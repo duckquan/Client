@@ -1,11 +1,57 @@
-import tkinter as tk
-from tkinter import messagebox, scrolledtext, simpledialog
 import binascii
 from Cryptodome.PublicKey import RSA
 from Cryptodome.Cipher import PKCS1_OAEP
-import socket
-import json
+import smtplib
+import os
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+# User Class
+class User:
+    def __init__(self,username, password):
+        self.username = username
+        self.password = password  # This should be hashed in a real application
+        self.emailAccounts = []
 
+    def addEmailAccount(self, emailAccount):
+        self.emailAccounts.append(emailAccount)
+
+    def removeEmailAccount(self, emailAccount):
+        self.emailAccounts.remove(emailAccount)
+
+# EmailAccount Class
+class EmailAccount:
+    def __init__(self, accountID, emailAddress, user):
+        self.accountID = accountID
+        self.emailAddress = emailAddress
+        self.user = user
+        self.mailbox = []
+
+    def sendEmail(self, emailMessage, storage_service):
+        emailMessage.sender = self.emailAddress
+        storage_service.saveEmail(emailMessage)
+
+# EmailMessage Class
+class EmailMessage:
+    def __init__(self, messageID, sender, recipients, subject, body, attachments=None, encrypted=False):
+        self.messageID = messageID
+        self.sender = sender
+        self.recipients = recipients
+        self.subject = subject
+        self.body = body
+        self.attachments = attachments if attachments else []
+        self.encrypted = encrypted
+
+    def encrypt(self, encryption_service):
+        if not self.encrypted:
+            self.body = encryption_service.encrypt_message(self.body)
+            self.encrypted = True
+
+    def decrypt(self, encryption_service):
+        if self.encrypted:
+            self.body = encryption_service.decrypt_message(self.body)
+            self.encrypted = False
+
+# EncryptionService Class
 class EncryptionService:
     def __init__(self):
         key = RSA.generate(2048)
@@ -22,186 +68,97 @@ class EncryptionService:
         decrypted_data = decryptor.decrypt(binascii.unhexlify(encrypted_message))
         return decrypted_data.decode()
 
-
-class User:
-    def __init__(self, username, password):
-        self.username = username
-        self.password = password
-        self.email_accounts = []
-
-    def add_email_account(self, email_address):
-        # Check if an account with this email already exists
-        for account in self.email_accounts:
-            if account.email_address == email_address:
-                return account
-        # If not, create a new one
-        new_account = EmailAccount(email_address, self)
-        self.email_accounts.append(new_account)
-        return new_account
-
-
-class EmailAccount:
-    def __init__(self, email_address, user):
-        self.email_address = email_address
-        self.user = user
-        self.mailbox = []
-
-    def send_email(self, recipients, subject, body, encryption_service):
-        email = EmailMessage(self.email_address, recipients, subject, body)
-        email.encrypt(encryption_service)
-        self.mailbox.append(email)  # Simulating email sending by storing in mailbox
-        return email
-
-    def receive_email(self, email_message, encryption_service):
-        email_message.decrypt(encryption_service)
-        self.mailbox.append(email_message)  # Simulating email reception
-
-
-class EmailMessage:
-    def __init__(self, sender, recipients, subject, body):
-        self.sender = sender
-        self.recipients = recipients
-        self.subject = subject
-        self.body = body
-        self.encrypted = False
-
-    def encrypt(self, encryption_service):
-        self.body = encryption_service.encrypt_message(self.body)
-        self.encrypted = True
-
-    def decrypt(self, encryption_service):
-        if self.encrypted:
-            self.body = encryption_service.decrypt_message(self.body)
-            self.encrypted = False
-
-
-class JsonSocketClient:
-    def __init__(self, server_ip, server_port):
-        self.server_ip = server_ip
-        self.server_port = server_port
-        self.client_socket = None
-        self.create_socket()
-
-    def create_socket(self):
-        """Create a new socket."""
-        if self.client_socket is not None:
-            self.client_socket.close()
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+# SMTPService Class
+class SMTPClient:
+    def __init__(self, server_address, port, timeout, username=None, password=None, use_tls=False):
+        self.server_address = server_address
+        self.port = port
+        self.username = None
+        self.password = None
+        self.use_tls = use_tls
+        self.connection = None
+        self.timeout = timeout
 
     def connect(self):
-        """Connect to the server."""
-        try:
-            self.client_socket.connect((self.server_ip, self.server_port))
-            print(f"Connected to {self.server_ip} on port {self.server_port}.")
-        except socket.error as e:
-            print(f"Failed to connect: {e}")
-            self.create_socket()  # Recreate the socket if connect fails
+        """Connect to the SMTP server and optionally start TLS."""
+        self.connection = smtplib.SMTP(self.server_address, self.port)
+        self.connection.ehlo()  # Can be called for all SMTP servers.
+        if self.use_tls:
+            self.connection.starttls()
+            self.connection.ehlo()  # Say hello again after starting TLS
+        if self.username and self.password:
+            self.connection.login("minhdq@unomail.id.vn", "Minhdo962004")
 
-    def send_message(self, message):
-        """Send a message to the server."""
-        try:
-            self.client_socket.sendall(message.encode())
-        except Exception as e:
-            print(f"Failed to send message: {e}")
+    def send_email(self, sender, recipients, subject, body):
+        """Send an email through the connected SMTP server."""
+        if not self.connection:
+            raise Exception("SMTP client is not connected to a server.")
 
-    def receive_message(self):
-        """Receive a message from the server."""
+        message = MIMEMultipart()
+        message['From'] = sender
+        message['To'] = ', '.join(recipients)
+        message['Subject'] = subject
+        message.attach(MIMEText(body, 'plain'))
+
+        self.connection.sendmail(sender, recipients, message.as_string())
+
+    def disconnect(self):
+        """Close the connection to the SMTP server."""
+        if self.connection:
+            self.connection.quit()
+            self.connection = None
+
+# StorageService Class
+class StorageService:
+    def __init__(self, storage_location):
+        self.storage_location = storage_location
+        if not os.path.exists(storage_location):
+            os.makedirs(storage_location)
+
+    def saveEmail(self, message):
+        with open(f"{self.storage_location}/{message.messageID}.txt", "wb") as file:
+            file.write(f"Subject: {message.subject}\nBody: {message.body}".encode())
+
+    def retrieveEmail(self, messageID):
         try:
-            response = self.client_socket.recv(1024)
-            return response.decode()
-        except Exception as e:
-            print(f"Failed to receive message: {e}")
+            with open(f"{self.storage_location}/{messageID}.txt", "rb") as file:
+                return file.read().decode()
+        except FileNotFoundError:
             return None
-    def send_json(self, data):
-        """Send JSON data to the server."""
-        try:
-            # Serialize the data to a JSON formatted str and encode to bytes
-            json_data = json.dumps(data).encode('utf-8')
-            self.client_socket.sendall(json_data)
-            print("JSON data sent successfully.")
-        except Exception as e:
-            print(f"Failed to send JSON data: {e}")
 
-    def close(self):
-        """Close the socket connection."""
-        if self.client_socket:
-            self.client_socket.close()
-            print("Connection closed.")
+# Main function to test classes
+def main():
+    # Create user and services
+    user1 = User("123", "123")
+    encryption_service = EncryptionService()
+    storage_service = StorageService('/path/to/email/storage')  # Adjust path as needed
 
+    # Create and add an email account to the user
+    email_account = EmailAccount("account001", "user1@example.com", user1)
+    user1.addEmailAccount(email_account)
 
+    # Create an email message
+    email = EmailMessage("001", "", ["recipient@example.com"], "Test Subject", "Hello, this is a test email.")
 
-class ApplicationGUI:
-    def __init__(self, master):
-        self.master = master
-        self.master.title("Secure Email Client")
+    # Encrypt, send, and save the email
+    email.encrypt(encryption_service)
+    email_account.sendEmail(email, storage_service)
 
-        self.encryption_service = EncryptionService()  # Ensure it is a class attribute
-        self.logged_in_user = None  # This will be a User object after login
+    # Retrieve and decrypt the email for display
+    retrieved_email_content = storage_service.retrieveEmail("001")
+    print("Retrieved Email Content:", retrieved_email_content)
 
-        self.login_frame = tk.Frame(master)
-        self.email_frame = None
-        self.setup_login_frame()
-
-    def setup_login_frame(self):
-        tk.Label(self.login_frame, text="Username").pack()
-        self.username_entry = tk.Entry(self.login_frame)
-        self.username_entry.pack()
-
-        tk.Label(self.login_frame, text="Password").pack()
-        self.password_entry = tk.Entry(self.login_frame, show='*')
-        self.password_entry.pack()
-
-        tk.Button(self.login_frame, text="Login", command=self.login).pack()
-        self.login_frame.pack()
-
-    def login(self):
-        username = self.username_entry.get()
-        password = self.password_entry.get()  # In real applications, handle password securely
-        self.logged_in_user = User(username, password)
-        self.setup_email_interface()
-
-    def setup_email_interface(self):
-        if self.login_frame:
-            self.login_frame.pack_forget()
-        self.email_frame = tk.Frame(self.master)
-        tk.Label(self.email_frame, text="Welcome, " + self.logged_in_user.username).pack()
-        tk.Button(self.email_frame, text="Send Email", command=self.send_email).pack()
-        self.email_frame.pack()
-
-    def send_email(self):
-        recipient = simpledialog.askstring("Recipient", "Enter the recipient's email:")
-        subject = simpledialog.askstring("Subject", "Enter the subject:")
-        body = simpledialog.askstring("Body", "Enter the body:")
-        if recipient and subject and body:
-            # Ensure that user has an email account
-            if not self.logged_in_user.email_accounts:
-                account = self.logged_in_user.add_email_account(self.logged_in_user.username + "@example.com")
-            else:
-                account = self.logged_in_user.email_accounts[0]  # Use the first account
-            email = account.send_email([recipient], subject, body, self.encryption_service)
-            messagebox.showinfo("Success", "Email sent with encrypted body: " + email.body)
-
+    #Connect to Server
+    smtp_client = SMTPClient("192.168.117.57", 25, use_tls=False, timeout=120)
+    try:
+        smtp_client.connect()
+        smtp_client.send_email("minhdq@unomail.id.vn", ["hahahaha@unomail.id.vn"], "Test Subject",
+                               "This is a test email sent via SMTPClient class.")
+        print("Email sent successfully!")
+    except Exception as e:
+        print(f"Failed to send email: {e}")
+    finally:
+        smtp_client.disconnect()
 
 if __name__ == "__main__":
-    server_ip = "192.168.149.57"  # Địa chỉ IP của server
-    server_port = 25  # Cổng mà server đang lắng nghe
-    client = JsonSocketClient(server_ip, server_port)
-    # Example JSON data
-    json_data = {
-        "name": "John Doe",
-        "email": "john@example.com",
-        "age": 30
-    }
-
-    client.connect()
-    client.send_message("Hello, server!")
-    client.send_json(json_data)
-    response = client.receive_message()
-    Connect = client.connect()
-    if response:
-        print("Received from server:", response)
-    if Connect == False :
-        client.close()
-    root = tk.Tk()
-    app = ApplicationGUI(root)
-    root.mainloop()
+    main()
