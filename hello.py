@@ -5,6 +5,7 @@ import smtplib
 import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from received_mail import receive_emails_imap
 # User Class
 class User:
     def __init__(self,username, password):
@@ -70,18 +71,18 @@ class EncryptionService:
 
 # SMTPService Class
 class SMTPClient:
-    def __init__(self, server_address, port, timeout, username=None, password=None, use_tls=False):
+    def __init__(self, server_address, port, timeout, username=None, password=None, use_tls=True):
         self.server_address = server_address
         self.port = port
-        self.username = None
-        self.password = None
+        self.username = username
+        self.password = password
         self.use_tls = use_tls
         self.connection = None
         self.timeout = timeout
 
     def connect(self):
         """Connect to the SMTP server and optionally start TLS."""
-        self.connection = smtplib.SMTP("192.168.117.57", 25)
+        self.connection = smtplib.SMTP(self.server_address, self.port, timeout=self.timeout)
         self.connection.ehlo()  # Can be called for all SMTP servers.
         if self.use_tls:
             self.connection.starttls()
@@ -129,16 +130,16 @@ class StorageService:
 # Main function to test classes
 def main():
     # Create user and services
-    user1 = User("123", "123")
+    user1 = User("minhdq@unomail.id.vn", "Minhdo962004")
     encryption_service = EncryptionService()
     storage_service = StorageService('/path/to/email/storage')  # Adjust path as needed
 
     # Create and add an email account to the user
-    email_account = EmailAccount("account001", "user1@example.com", user1)
+    email_account = EmailAccount("1", "user1@example.com", user1)
     user1.addEmailAccount(email_account)
 
     # Create an email message
-    email = EmailMessage("001", "", ["recipient@example.com"], "Test Subject", "Hello, this is a test email.")
+    email = EmailMessage("001", "minhdq@unomail.id.vn", "hahahaha@unomail.id.vn", "Test Subject", "Hello, this is a test email.")
 
     # Encrypt, send, and save the email
     email.encrypt(encryption_service)
@@ -149,10 +150,10 @@ def main():
     print("Retrieved Email Content:", retrieved_email_content)
 
     #Connect to Server
-    smtp_client = SMTPClient("127.0.0.1", 25, 120, username="minhdq@unomail.id.vn",password="Minhdo962004", use_tls=False)
+    smtp_client = SMTPClient("192.168.117.57", 587, 120, username="minhdq@unomail.id.vn",password="Minhdo962004", use_tls=True)
     try:
         smtp_client.connect()
-        smtp_client.send_email("minhdq@unomail.id.vn", ["hahahaha@unomail.id.vn"], "Test Subject",
+        smtp_client.send_email("minhdq@unomail.id.vn", "hahahaha@unomail.id.vn", "Test Subject",
                                "This is a test email sent via SMTPClient class.")
         print("Email sent successfully!")
     except Exception as e:
@@ -160,5 +161,12 @@ def main():
     finally:
         smtp_client.disconnect()
 
+    server = 'imap.example.com'
+    port = 993
+    username = 'your-email@example.com'
+    password = 'yourpassword'
+
+    # Receive all emails
+    emails = receive_emails_imap(server, port, username, password)
 if __name__ == "__main__":
     main()
